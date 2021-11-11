@@ -1,0 +1,99 @@
+#                                    __   __  __
+#                                    \ \ / / / /
+#                                     \ V / / /
+#                                      \_/  \/
+#
+#                                    V E C T O R
+#                                   Configuration
+#
+# ------------------------------------------------------------------------------
+# Website: https://vector.dev
+# Docs: https://vector.dev/docs
+# Chat: https://chat.vector.dev
+# ------------------------------------------------------------------------------
+
+# Change this to use a non-default directory for Vector data storage:
+data_dir = "./vector-data"
+
+# Random Syslog-formatted logs
+# [sources.dummy_logs]
+# type = "generator"
+# format = "syslog"
+# interval = 1
+
+[sources.heroku_log_plex]
+type = "heroku_logs"
+address = "0.0.0.0:${PORT}"
+query_parameters = ["service", "env", "heroku_app_name"]
+
+# Parse Syslog logs
+# See the Vector Remap Language reference for more info: https://vrl.dev
+# [transforms.parse_logs]
+# type = "remap"
+# inputs = ["heroku_log_plex"]
+# source = '''
+# . = parse_syslog!(string!(.message))
+# '''
+
+[transforms.heroku]
+type = "route"
+inputs = ["heroku_log_plex"]
+  [transforms.heroku.route]
+  app = '.app_name == "app"'
+  router = '.app_name == "heroku"'
+
+[transforms.heroku_router_logfmt]
+type = "remap"
+inputs = ["heroku.router"]
+source = '''
+. = merge(., parse_logfmt!(string!(.message)))
+del(.message)
+'''
+
+[transforms.heroku_app_json]
+type = "remap"
+inputs = ["heroku.app"]
+source = '''
+. = merge!(., parse_json!(string!(.message)))
+del(.message)
+'''
+
+# Print parsed logs to stdout
+# [sinks.print]
+# type = "console"
+# inputs = ["parse_logs"]
+# encoding.codec = "json"
+
+# [sinks.print]
+# type = "console"
+# inputs = [ "heroku_router_logfmt", "heroku_app_json"]
+# encoding.codec = "json"
+
+
+[sinks.loki]
+type = "loki"
+inputs = [ "heroku_router_logfmt", "heroku_app_json" ]
+labels.vector_deployment = "heroku"
+labels.status_code = "{{status}}"
+labels.host = "{{host}}"
+labels.method = "{{method}}"
+labels.proc_id = "{{proc_id}}"
+labels.env = "{{env}}"
+labels.service = "{{service}}"
+labels.heroku_app_name = "{{heroku_app_name}}"
+auth.strategy = "basic"
+auth.password = "${LOKI_PASSWORD}"
+auth.user = "${LOKI_USER}"
+endpoint = "https://logs-prod-us-central1.grafana.net"
+encoding.codec = "json"
+encoding.timestamp_format = "rfc3339"
+out_of_order_action = "rewrite_timestamp"
+request.concurrency = "adaptive"
+batch.max_bytes = 10240000 # 1mb
+
+# Vector's GraphQL API (disabled by default)
+# Uncomment to try it out with the `vector top` command or
+# in your browser at http://localhost:8686
+#[api]
+#enabled = true
+#address = "127.0.0.1:8686"

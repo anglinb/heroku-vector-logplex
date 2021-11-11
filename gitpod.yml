@@ -1,0 +1,5 @@
+tasks:
+  - name: dev
+    init: curl --proto '=https' --tlsv1.2 -sSf https://sh.vector.dev | bash -s -- -y
+    command:  source ~/.profile && PORT=3000 vector --config vector.toml
+

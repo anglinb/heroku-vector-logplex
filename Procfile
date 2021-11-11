@@ -1,0 +1,1 @@
+web: bin/refresh-vector . . . && bin/vector --config vector.toml
